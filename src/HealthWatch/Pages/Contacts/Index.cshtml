@@ -13,15 +13,14 @@
 }
 @model ContactsIndexModel
 @{ ViewData["Title"] = "Contacts"; }
-<div class="d-flex justify-content-between"><h3>Alert contacts</h3><a class="btn btn-primary" asp-page="Edit">Add contact</a></div>
-<p class="text-muted">All enabled contacts are notified on every incident, via their selected channels.</p>
-<table class="table table-sm"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Channels</th><th>Enabled</th><th></th></tr></thead><tbody>
+<div class="d-flex justify-content-between align-items-center mb-3"><span class="text-muted">All enabled contacts are notified on every incident, via their selected channels.</span><a class="btn btn-primary text-nowrap" asp-page="Edit">+ Add contact</a></div>
+<div class="table-wrap"><table class="table align-middle"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Channels</th><th>Enabled</th><th></th></tr></thead><tbody>
 @foreach (var c in Model.Contacts)
 {
-    <tr><td>@c.Name</td><td>@c.Email</td><td>@c.Phone</td>
+    <tr><td class="fw-semibold">@c.Name</td><td>@c.Email</td><td>@c.Phone</td>
         <td>@string.Join(", ", new[] { c.UseEmail ? "Email" : null, c.UseSms ? "SMS" : null, c.UseWhatsApp ? "WhatsApp" : null }.Where(x => x != null))</td>
-        <td>@(c.Enabled ? "Yes" : "No")</td>
+        <td><span class="badge @(c.Enabled ? "bg-success" : "bg-secondary")">@(c.Enabled ? "Enabled" : "Disabled")</span></td>
         <td class="text-end"><a class="btn btn-sm btn-outline-secondary" asp-page="Edit" asp-route-id="@c.Id">Edit</a>
             <form method="post" asp-page-handler="Delete" asp-route-id="@c.Id" class="d-inline"><button class="btn btn-sm btn-outline-danger">Delete</button></form></td></tr>
 }
-</tbody></table>
+</tbody></table></div>

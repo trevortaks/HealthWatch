@@ -16,18 +16,18 @@
 }
 @model TargetsIndexModel
 @{ ViewData["Title"] = "Targets"; }
-<div class="d-flex justify-content-between"><h3>Targets</h3><a class="btn btn-primary" asp-page="Edit">Add target</a></div>
-<table class="table table-sm">
+<div class="d-flex justify-content-end mb-3"><a class="btn btn-primary" asp-page="Edit">+ Add target</a></div>
+<div class="table-wrap"><table class="table align-middle">
     <thead><tr><th>Name</th><th>Type</th><th>Target</th><th>Every</th><th>Enabled</th><th></th></tr></thead>
     <tbody>
     @foreach (var t in Model.Targets)
     {
         <tr>
-            <td>@t.Name</td>
+            <td class="fw-semibold">@t.Name</td>
             <td>@t.Kind</td>
             <td>@(t.Kind == TargetKind.Http ? t.Url : t.Provider.ToString())</td>
             <td>@t.IntervalSeconds s</td>
-            <td>@(t.Enabled ? "Yes" : "No")</td>
+            <td><span class="badge @(t.Enabled ? "bg-success" : "bg-secondary")">@(t.Enabled ? "Enabled" : "Disabled")</span></td>
             <td class="text-end">
                 <a class="btn btn-sm btn-outline-secondary" asp-page="Edit" asp-route-id="@t.Id">Edit</a>
                 <form method="post" asp-page-handler="Delete" asp-route-id="@t.Id" class="d-inline" onsubmit="return confirm('Delete @t.Name and its history?')">
@@ -36,4 +36,4 @@
         </tr>
     }
     </tbody>
-</table>
+</table></div>

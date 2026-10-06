@@ -50,7 +50,6 @@
 }
 @model TargetEditModel
 @{ ViewData["Title"] = "Edit target"; }
-<h3>@(Model.T.Id == 0 ? "Add target" : "Edit target")</h3>
 <form method="post" class="row g-3" style="max-width:720px">
     <div asp-validation-summary="All" class="text-danger"></div>
     <div class="col-md-8"><label class="form-label">Name</label><input asp-for="T.Name" class="form-control" /></div>

@@ -32,10 +32,13 @@
 }
 @model LoginModel
 @{ ViewData["Title"] = "Sign in"; }
-<div class="row justify-content-center"><div class="col-md-4">
-<h3>Sign in</h3>
-@if (Model.Error != null) { <div class="alert alert-danger">@Model.Error</div> }
-<form method="post">
-    <input type="password" asp-for="Password" class="form-control mb-3" placeholder="Admin password" autofocus />
-    <button class="btn btn-primary w-100">Sign in</button>
-</form></div></div>
+<div class="card login-card text-center">
+    <div class="brand-logo"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 12 7 12 10 4 14 20 17 12 21 12"/></svg></div>
+    <h4 class="fw-bold mb-1">HealthWatch</h4>
+    <p class="text-muted mb-4">Sign in to your dashboard</p>
+    @if (Model.Error != null) { <div class="alert alert-danger py-2">@Model.Error</div> }
+    <form method="post">
+        <input type="password" asp-for="Password" class="form-control mb-3" placeholder="Admin password" autofocus />
+        <button class="btn btn-primary w-100 py-2">Sign in</button>
+    </form>
+</div>

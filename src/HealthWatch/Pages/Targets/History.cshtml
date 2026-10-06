@@ -5,29 +5,144 @@
         public Target? T { get; set; }
         public List<CheckResult> Results { get; set; } = [];
         public List<Incident> Incidents { get; set; } = [];
+        public record Win(string Label, int Days, double? Uptime, int Incidents, TimeSpan Down, bool Covered);
+        public List<Win> Windows { get; set; } = [];
+        public int RetentionDays { get; set; }
+        public DateTime? SslExpiry { get; set; }
+        public string? SslIssuer { get; set; }
         public async Task<IActionResult> OnGetAsync(int id)
         {
             T = await db.Targets.FindAsync(id);
             if (T is null) return NotFound();
             Results = await db.Results.Where(r => r.TargetId == id).OrderByDescending(r => r.At).Take(200).ToListAsync();
             Incidents = await db.Incidents.Where(i => i.TargetId == id).OrderByDescending(i => i.StartedAt).Take(20).ToListAsync();
+            RetentionDays = (await db.GetSettingsAsync()).RetentionDays;
+            var now = DateTime.UtcNow;
+            foreach (var (label, days) in new[] { ("Last 24 hours", 1), ("Last 7 days", 7), ("Last 30 days", 30), ("Last 365 days", 365) })
+            {
+                var from = now.AddDays(-days);
+                // Only trust a window once enough history exists to cover (most of) it.
+                var oldest = await db.Results.Where(r => r.TargetId == id).OrderBy(r => r.At).Select(r => (DateTime?)r.At).FirstOrDefaultAsync();
+                var covered = days <= RetentionDays && oldest != null;
+                if (!covered) { Windows.Add(new(label, days, null, 0, TimeSpan.Zero, false)); continue; }
+                var q = db.Results.Where(r => r.TargetId == id && r.At >= from);
+                var total = await q.CountAsync();
+                var okc = await q.CountAsync(r => r.Success);
+                var inc = await db.Incidents.Where(i => i.TargetId == id && i.StartedAt <= now && (i.EndedAt == null || i.EndedAt >= from)).ToListAsync();
+                var down = TimeSpan.FromTicks(inc.Sum(i => { var st = i.StartedAt < from ? from : i.StartedAt; var en = i.EndedAt ?? now; return en > st ? (en - st).Ticks : 0; }));
+                Windows.Add(new(label, days, total == 0 ? null : 100.0 * okc / total, inc.Count, down, true));
+            }
+            if (T.Kind == TargetKind.Http && Uri.TryCreate(T.Url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
+            {
+                try
+                {
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+                    using var tcp = new System.Net.Sockets.TcpClient();
+                    await tcp.ConnectAsync(uri.Host, uri.Port, cts.Token);
+                    using var ssl = new System.Net.Security.SslStream(tcp.GetStream(), false, (_, _, _, _) => true);
+                    await ssl.AuthenticateAsClientAsync(new System.Net.Security.SslClientAuthenticationOptions { TargetHost = uri.Host }, cts.Token);
+                    if (ssl.RemoteCertificate is { } c) { var x = new System.Security.Cryptography.X509Certificates.X509Certificate2(c); SslExpiry = x.NotAfter; SslIssuer = x.GetNameInfo(System.Security.Cryptography.X509Certificates.X509NameType.SimpleName, true); }
+                }
+                catch { }
+            }
             return Page();
         }
     }
 }
 @model HistoryModel
-@{ ViewData["Title"] = Model.T!.Name; }
-<h3>@Model.T.Name</h3>
+@{
+    ViewData["Title"] = Model.T!.Name;
+    var t = Model.T;
+    var res = Model.Results.OrderBy(r => r.At).ToList();
+    var ok = res.Count(r => r.Success);
+    var up = res.Count > 0 ? 100.0 * ok / res.Count : (double?)null;
+    var lat = res.Where(r => r.Success).Select(r => r.LatencyMs).ToList();
+    var state = !t.Enabled ? "idle" : t.LastSuccess == null ? "idle" : t.LastSuccess == true ? "up" : "down";
+    var bars = res.TakeLast(60).ToList();
+    int max = Math.Max(lat.Count > 0 ? lat.Max() : 1, 1);
+    string Pts() => string.Join(" ", res.Select((r, i) => $"{(res.Count < 2 ? 0 : 1000.0 * i / (res.Count - 1)):F1},{(200 - 200.0 * r.LatencyMs / max):F1}"));
+}
+<a asp-page="/Index" class="small text-decoration-none">&larr; Back to dashboard</a>
+<div class="mon-head mt-2">
+    <div class="mon-dot @(state == "up" ? "" : state)">@(state == "up" ? "\u25B2" : state == "down" ? "\u25BC" : "\u2014")</div>
+    <div>
+        <h2 class="mon-name">@t.Name</h2>
+        <div class="text-muted">@(t.Kind == TargetKind.Http ? "HTTP/S monitor for " + t.Url : "Database monitor (" + t.Provider + ")") &middot; every @t.IntervalSeconds s</div>
+    </div>
+    <a class="btn btn-outline-secondary ms-auto" asp-page="Edit" asp-route-id="@t.Id">Edit</a>
+</div>
+<div class="stat-grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+    <div class="card stat"><div class="stat-label">Current status</div><div class="stat-value @state">@(state == "up" ? "Up" : state == "down" ? "Down" : !t.Enabled ? "Disabled" : "Pending")</div><div class="stat-sub">@t.LastMessage</div></div>
+    <div class="card stat"><div class="stat-label">Last check</div><div class="stat-value">@(t.LastCheckAt?.ToLocalTime().ToString("HH:mm:ss") ?? "-")</div><div class="stat-sub">@(t.LastLatencyMs is { } l ? l + " ms" : "") </div></div>
+    @{ var d24 = Model.Windows[0]; }
+    <div class="card stat"><div class="stat-label d-flex justify-content-between"><span>Last 24 hours</span><span>@(d24.Uptime is { } u ? u.ToString("0.##") + "%" : "")</span></div>
+        <div class="bars">@foreach (var r in bars) { <i class="@(r.Success ? "ok" : "bad")" title="@r.At.ToLocalTime()"></i> }</div>
+        <div class="stat-sub">@d24.Incidents incident(s), @AlertService.FormatDuration(d24.Down) down</div></div>
+</div>
+@{
+    var w30 = Model.Windows[2];
+    string Tone(double? v) => v is null ? "idle" : v >= 99.9 ? "up" : v >= 95 ? "warn" : "down";
+}
+<div class="row g-3 mb-4">
+  <div class="col-xl-9">
+    <div class="card statrow h-100">
+    @foreach (var w in Model.Windows.Skip(1))
+    {
+        <div>
+            <div class="stat-label">@w.Label</div>
+            <div class="stat-value @Tone(w.Uptime)">@(w.Uptime is { } v ? v.ToString("0.###") + "%" : "--.---%")</div>
+            <div class="stat-sub">@(w.Covered ? $"{w.Incidents} incident(s), {AlertService.FormatDuration(w.Down)} down" : $"Needs {w.Days} days of history (keeping {Model.RetentionDays})")</div>
+        </div>
+    }
+        <div>
+            <div class="stat-label">MTBF <span class="text-muted small">(30 days)</span></div>
+            <div class="stat-value">@(w30.Covered && w30.Incidents > 0 ? AlertService.FormatDuration((TimeSpan.FromDays(30) - w30.Down) / w30.Incidents) : "N/A")</div>
+            <div class="stat-sub">mean time between failures</div>
+        </div>
+    </div>
+  </div>
+  <div class="col-xl-3">
+    <div class="card stat h-100">
+        <div class="stat-label">SSL certificate valid until</div>
+        @if (Model.SslExpiry is { } exp)
+        {
+            var days = (int)(exp - DateTime.UtcNow).TotalDays;
+            <div class="stat-value @(days < 0 ? "down" : days < 14 ? "warn" : "up") fs-4">@exp.ToLocalTime().ToString("dd MMM yyyy")</div>
+            <div class="stat-sub">@(days < 0 ? "Expired " + (-days) + " days ago" : days + " days left") &middot; @Model.SslIssuer</div>
+        }
+        else { <div class="stat-value idle fs-4">N/A</div><div class="stat-sub">@(Model.T!.Kind == TargetKind.Http && (Model.T.Url ?? "").StartsWith("https") ? "Could not read certificate" : "Not an HTTPS monitor")</div> }
+    </div>
+  </div>
+</div>
+<div class="card mb-4">
+    <div class="p-4 pb-2 fw-bold">Response time <span class="text-muted fw-normal small">&middot; last @res.Count checks</span></div>
+    <div class="px-4">
+    @if (res.Count > 1)
+    {
+        <svg class="chart" viewBox="0 0 1000 200" preserveAspectRatio="none">
+            @foreach (var f in new[] { 0.0, 0.5, 1.0 }) { <line class="grid" x1="0" x2="1000" y1="@((200 * f).ToString("F0"))" y2="@((200 * f).ToString("F0"))" vector-effect="non-scaling-stroke" /> }
+            <polygon class="area" points="0,200 @Pts() 1000,200" />
+            <polyline class="line" points="@Pts()" />
+        </svg>
+    }
+    else { <p class="text-muted py-4">Not enough data yet.</p> }
+    </div>
+    <div class="statrow border-top mt-3" style="border-color:var(--hw-border)!important">
+        <div><div class="stat-sub">Average</div><div class="stat-value fs-4">@(lat.Count > 0 ? (int)lat.Average() : 0) ms</div></div>
+        <div><div class="stat-sub">Minimum</div><div class="stat-value fs-4">@(lat.Count > 0 ? lat.Min() : 0) ms</div></div>
+        <div><div class="stat-sub">Maximum</div><div class="stat-value fs-4">@(lat.Count > 0 ? lat.Max() : 0) ms</div></div>
+    </div>
+</div>
 <h5>Incidents</h5>
-<table class="table table-sm"><thead><tr><th>Started</th><th>Ended</th><th>Error</th></tr></thead><tbody>
+<div class="table-wrap"><table class="table"><thead><tr><th>Started</th><th>Ended</th><th>Error</th></tr></thead><tbody>
 @foreach (var i in Model.Incidents) { <tr><td>@i.StartedAt.ToLocalTime()</td><td>@(i.EndedAt?.ToLocalTime().ToString() ?? "ONGOING")</td><td>@i.LastError</td></tr> }
-</tbody></table>
+</tbody></table></div>
 <h5>Last 200 checks</h5>
-<table class="table table-sm"><thead><tr><th>Time</th><th>Result</th><th>Status</th><th>Latency</th><th>Error</th></tr></thead><tbody>
+<div class="table-wrap"><table class="table"><thead><tr><th>Time</th><th>Result</th><th>Status</th><th>Latency</th><th>Error</th></tr></thead><tbody>
 @foreach (var r in Model.Results)
 {
     <tr><td>@r.At.ToLocalTime().ToString("MM-dd HH:mm:ss")</td>
         <td><span class="badge @(r.Success ? "bg-success" : "bg-danger")">@(r.Success ? "OK" : "FAIL")</span></td>
         <td>@r.StatusCode</td><td>@r.LatencyMs ms</td><td>@r.Error</td></tr>
 }
-</tbody></table>
+</tbody></table></div>

@@ -39,7 +39,6 @@
 }
 @model SettingsModel
 @{ ViewData["Title"] = "Settings"; }
-<h3>Settings</h3>
 @if (Model.Message != null) { <div class="alert alert-info">@Model.Message</div> }
 <form method="post" class="row g-3" style="max-width:760px">
     <h5 class="mt-3">Email (SMTP)</h5>

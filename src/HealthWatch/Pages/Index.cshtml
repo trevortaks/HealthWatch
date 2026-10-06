@@ -25,13 +25,15 @@
 @model IndexModel
 @{ ViewData["Title"] = "Dashboard"; }
 @section Head { <meta http-equiv="refresh" content="15" /> }
-<h3>Dashboard</h3>
-<div class="mb-3">
-    <span class="badge bg-success">Up: @Model.Targets.Count(t => t.Enabled && t.LastSuccess == true)</span>
-    <span class="badge bg-danger">Down: @Model.Targets.Count(t => t.Enabled && t.LastSuccess == false)</span>
-    <span class="badge bg-secondary">Pending/disabled: @Model.Targets.Count(t => !t.Enabled || t.LastSuccess == null)</span>
+@{ var avgUp = Model.Uptime.Count > 0 ? Model.Uptime.Values.Average() : (double?)null; }
+<div class="stat-grid">
+    <div class="card stat"><div class="stat-label">Up</div><div class="stat-value up">@Model.Targets.Count(t => t.Enabled && t.LastSuccess == true)</div><div class="stat-sub">of @Model.Targets.Count monitors</div></div>
+    <div class="card stat"><div class="stat-label">Down</div><div class="stat-value down">@Model.Targets.Count(t => t.Enabled && t.LastSuccess == false)</div><div class="stat-sub">currently failing</div></div>
+    <div class="card stat"><div class="stat-label">Pending / disabled</div><div class="stat-value idle">@Model.Targets.Count(t => !t.Enabled || t.LastSuccess == null)</div><div class="stat-sub">not reporting</div></div>
+    <div class="card stat"><div class="stat-label">Last 24 hours</div><div class="stat-value up">@(avgUp is { } a ? a.ToString("F2") + "%" : "-")</div><div class="stat-sub">average uptime</div></div>
 </div>
-<table class="table table-sm align-middle">
+<div class="table-wrap">
+<table class="table align-middle">
     <thead><tr><th>Status</th><th>Name</th><th>Type</th><th>Last check</th><th>Latency</th><th>24h uptime</th><th>Message</th><th></th></tr></thead>
     <tbody>
     @foreach (var t in Model.Targets)
@@ -54,4 +56,5 @@
     }
     </tbody>
 </table>
-@if (!Model.Targets.Any()) { <p class="text-muted">No targets yet. <a asp-page="/Targets/Edit">Add one</a>.</p> }
+</div>
+@if (!Model.Targets.Any()) { <p class="text-muted text-center py-4">No targets yet. <a asp-page="/Targets/Edit">Add one</a>.</p> }

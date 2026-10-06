@@ -31,7 +31,6 @@
 }
 @model ContactEditModel
 @{ ViewData["Title"] = "Edit contact"; }
-<h3>@(Model.C.Id == 0 ? "Add contact" : "Edit contact")</h3>
 <form method="post" class="row g-3" style="max-width:600px">
     <div asp-validation-summary="All" class="text-danger"></div>
     <div class="col-12"><label class="form-label">Name</label><input asp-for="C.Name" class="form-control" /></div>
