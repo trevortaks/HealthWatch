@@ -1,0 +1,86 @@
+@page "{id:int?}"
+@functions {
+    public class TargetEditModel(AppDbContext db, Secrets secrets) : PageModel
+    {
+        [BindProperty] public Target T { get; set; } = new();
+        /// <summary>Plain-text input; blank on edit keeps the stored (encrypted) value.</summary>
+        [BindProperty] public string? ConnectionString { get; set; }
+        public bool HasStoredConnection { get; set; }
+
+        public async Task<IActionResult> OnGetAsync(int? id)
+        {
+            if (id is null) return Page();
+            var t = await db.Targets.FindAsync(id);
+            if (t is null) return NotFound();
+            T = t; HasStoredConnection = t.ConnectionStringEnc != null;
+            return Page();
+        }
+
+        public async Task<IActionResult> OnPostAsync(int? id)
+        {
+            ModelState.Remove("T.ConnectionStringEnc");
+            if (string.IsNullOrWhiteSpace(T.Name)) ModelState.AddModelError("T.Name", "Name is required");
+            if (T.Kind == TargetKind.Http && !Uri.TryCreate(T.Url, UriKind.Absolute, out var u)) ModelState.AddModelError("T.Url", "Enter a valid absolute URL");
+            if (T.Kind == TargetKind.Database && string.IsNullOrWhiteSpace(ConnectionString) && (id is null || (await db.Targets.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id))?.ConnectionStringEnc == null))
+                ModelState.AddModelError("ConnectionString", "Connection string is required");
+            if (!ModelState.IsValid) { HasStoredConnection = id != null; return Page(); }
+
+            T.IntervalSeconds = Math.Max(5, T.IntervalSeconds);
+            T.TimeoutSeconds = Math.Max(1, T.TimeoutSeconds);
+            if (id is null)
+            {
+                T.Id = 0;
+                T.ConnectionStringEnc = secrets.Protect(ConnectionString);
+                db.Targets.Add(T);
+            }
+            else
+            {
+                var e = await db.Targets.FindAsync(id);
+                if (e is null) return NotFound();
+                e.Name = T.Name; e.Kind = T.Kind; e.Enabled = T.Enabled; e.IntervalSeconds = T.IntervalSeconds;
+                e.TimeoutSeconds = T.TimeoutSeconds; e.FailuresBeforeAlert = Math.Max(1, T.FailuresBeforeAlert);
+                e.Url = T.Url; e.ExpectedStatus = T.ExpectedStatus; e.IgnoreTlsErrors = T.IgnoreTlsErrors;
+                e.Provider = T.Provider; e.Query = T.Query;
+                if (!string.IsNullOrWhiteSpace(ConnectionString)) e.ConnectionStringEnc = secrets.Protect(ConnectionString);
+            }
+            await db.SaveChangesAsync();
+            return RedirectToPage("Index");
+        }
+    }
+}
+@model TargetEditModel
+@{ ViewData["Title"] = "Edit target"; }
+<h3>@(Model.T.Id == 0 ? "Add target" : "Edit target")</h3>
+<form method="post" class="row g-3" style="max-width:720px">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <div class="col-md-8"><label class="form-label">Name</label><input asp-for="T.Name" class="form-control" /></div>
+    <div class="col-md-4"><label class="form-label">Type</label>
+        <select asp-for="T.Kind" class="form-select" id="kind">
+            <option value="Http">Application (URL)</option><option value="Database">Database</option></select></div>
+
+    <div class="col-12 kind-http"><label class="form-label">URL</label><input asp-for="T.Url" class="form-control" placeholder="https://app.example.com/health" /></div>
+    <div class="col-md-6 kind-http"><label class="form-label">Valid status codes</label><input asp-for="T.ExpectedStatus" class="form-control" /><div class="form-text">e.g. 200-399,401</div></div>
+    <div class="col-md-6 kind-http d-flex align-items-end"><div class="form-check"><input asp-for="T.IgnoreTlsErrors" class="form-check-input" /><label class="form-check-label">Ignore TLS certificate errors</label></div></div>
+
+    <div class="col-md-4 kind-db"><label class="form-label">Provider</label>
+        <select asp-for="T.Provider" class="form-select" asp-items="Html.GetEnumSelectList<DbProvider>()"></select></div>
+    <div class="col-12 kind-db"><label class="form-label">Connection string</label>
+        <input name="ConnectionString" class="form-control" autocomplete="off" placeholder="@(Model.HasStoredConnection ? "(stored encrypted - leave blank to keep)" : "Server=...;Database=...;User Id=...;Password=...")" /></div>
+    <div class="col-12 kind-db"><label class="form-label">Heartbeat query</label><input asp-for="T.Query" class="form-control" placeholder="SELECT 1" /></div>
+
+    <div class="col-md-3"><label class="form-label">Interval (s)</label><input asp-for="T.IntervalSeconds" class="form-control" /></div>
+    <div class="col-md-3"><label class="form-label">Timeout (s)</label><input asp-for="T.TimeoutSeconds" class="form-control" /></div>
+    <div class="col-md-3"><label class="form-label">Alert after N failures</label><input asp-for="T.FailuresBeforeAlert" class="form-control" /></div>
+    <div class="col-md-3 d-flex align-items-end"><div class="form-check"><input asp-for="T.Enabled" class="form-check-input" /><label class="form-check-label">Enabled</label></div></div>
+    <div class="col-12"><button class="btn btn-primary">Save</button> <a class="btn btn-link" asp-page="Index">Cancel</a></div>
+</form>
+@section Scripts {
+<script>
+    const kind = document.getElementById('kind');
+    function sync() {
+        document.querySelectorAll('.kind-http').forEach(e => e.style.display = kind.value === 'Http' ? '' : 'none');
+        document.querySelectorAll('.kind-db').forEach(e => e.style.display = kind.value === 'Database' ? '' : 'none');
+    }
+    kind.addEventListener('change', sync); sync();
+</script>
+}

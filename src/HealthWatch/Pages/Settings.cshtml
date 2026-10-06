@@ -1,0 +1,66 @@
+@page
+@functions {
+    public class SettingsModel(AppDbContext db, Secrets secrets, INotifier notifier) : PageModel
+    {
+        [BindProperty] public Settings S { get; set; } = new();
+        [BindProperty] public string? SmtpPassword { get; set; }
+        [BindProperty] public string? GikkoAuthValue { get; set; }
+        [TempData] public string? Message { get; set; }
+        public bool HasSmtpPassword { get; set; }
+        public bool HasGikkoAuth { get; set; }
+
+        public async Task OnGetAsync()
+        {
+            S = await db.GetSettingsAsync();
+            HasSmtpPassword = S.SmtpPasswordEnc != null; HasGikkoAuth = S.GikkoAuthValueEnc != null;
+        }
+
+        public async Task<IActionResult> OnPostAsync()
+        {
+            var e = await db.GetSettingsAsync();
+            e.SmtpHost = S.SmtpHost; e.SmtpPort = S.SmtpPort; e.SmtpUseSsl = S.SmtpUseSsl; e.SmtpUser = S.SmtpUser; e.SmtpFrom = S.SmtpFrom;
+            if (!string.IsNullOrEmpty(SmtpPassword)) e.SmtpPasswordEnc = secrets.Protect(SmtpPassword);
+            e.GikkoSmsUrl = S.GikkoSmsUrl; e.GikkoWhatsAppUrl = S.GikkoWhatsAppUrl; e.GikkoAuthHeader = S.GikkoAuthHeader ?? "Authorization";
+            if (!string.IsNullOrEmpty(GikkoAuthValue)) e.GikkoAuthValueEnc = secrets.Protect(GikkoAuthValue);
+            e.GikkoSmsBody = S.GikkoSmsBody; e.GikkoWhatsAppBody = S.GikkoWhatsAppBody;
+            e.RetentionDays = Math.Max(1, S.RetentionDays); e.DailyReportHour = S.DailyReportHour;
+            await db.SaveChangesAsync();
+            Message = "Settings saved.";
+            return RedirectToPage();
+        }
+
+        public async Task<IActionResult> OnPostTestAsync()
+        {
+            await notifier.NotifyAsync("[HealthWatch] Test alert", "This is a test alert from HealthWatch.");
+            Message = "Test sent to all enabled contacts (check the service log for any delivery errors).";
+            return RedirectToPage();
+        }
+    }
+}
+@model SettingsModel
+@{ ViewData["Title"] = "Settings"; }
+<h3>Settings</h3>
+@if (Model.Message != null) { <div class="alert alert-info">@Model.Message</div> }
+<form method="post" class="row g-3" style="max-width:760px">
+    <h5 class="mt-3">Email (SMTP)</h5>
+    <div class="col-md-6"><label class="form-label">Host</label><input asp-for="S.SmtpHost" class="form-control" /></div>
+    <div class="col-md-3"><label class="form-label">Port</label><input asp-for="S.SmtpPort" class="form-control" /></div>
+    <div class="col-md-3 d-flex align-items-end"><div class="form-check"><input asp-for="S.SmtpUseSsl" class="form-check-input" /><label class="form-check-label">Use TLS</label></div></div>
+    <div class="col-md-4"><label class="form-label">User</label><input asp-for="S.SmtpUser" class="form-control" autocomplete="off" /></div>
+    <div class="col-md-4"><label class="form-label">Password</label><input name="SmtpPassword" type="password" class="form-control" autocomplete="new-password" placeholder="@(Model.HasSmtpPassword ? "(stored - leave blank to keep)" : "")" /></div>
+    <div class="col-md-4"><label class="form-label">From address</label><input asp-for="S.SmtpFrom" class="form-control" /></div>
+
+    <h5 class="mt-4">Gikko (SMS / WhatsApp)</h5>
+    <div class="col-12"><label class="form-label">SMS endpoint URL</label><input asp-for="S.GikkoSmsUrl" class="form-control" /></div>
+    <div class="col-12"><label class="form-label">WhatsApp endpoint URL</label><input asp-for="S.GikkoWhatsAppUrl" class="form-control" /></div>
+    <div class="col-md-4"><label class="form-label">Auth header name</label><input asp-for="S.GikkoAuthHeader" class="form-control" /></div>
+    <div class="col-md-8"><label class="form-label">Auth header value (e.g. Bearer token / API key)</label><input name="GikkoAuthValue" type="password" class="form-control" autocomplete="new-password" placeholder="@(Model.HasGikkoAuth ? "(stored - leave blank to keep)" : "")" /></div>
+    <div class="col-12"><label class="form-label">SMS JSON body <span class="text-muted">- placeholders: {to}, {message}</span></label><textarea asp-for="S.GikkoSmsBody" class="form-control font-monospace" rows="3"></textarea></div>
+    <div class="col-12"><label class="form-label">WhatsApp JSON body</label><textarea asp-for="S.GikkoWhatsAppBody" class="form-control font-monospace" rows="3"></textarea></div>
+
+    <h5 class="mt-4">General</h5>
+    <div class="col-md-4"><label class="form-label">Keep history (days)</label><input asp-for="S.RetentionDays" class="form-control" /></div>
+    <div class="col-md-4"><label class="form-label">Daily email summary hour (0-23, -1 = off)</label><input asp-for="S.DailyReportHour" class="form-control" /></div>
+    <div class="col-12"><button class="btn btn-primary">Save</button>
+        <button class="btn btn-outline-secondary" asp-page-handler="Test" formnovalidate>Send test alert</button></div>
+</form>

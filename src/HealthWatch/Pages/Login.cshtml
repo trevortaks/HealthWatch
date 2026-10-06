@@ -1,0 +1,41 @@
+@page
+@using System.Security.Claims
+@using System.Security.Cryptography
+@using System.Text
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject IConfiguration Config
+@functions {
+    public class LoginModel(IConfiguration config) : PageModel
+    {
+        [BindProperty] public string Password { get; set; } = "";
+        public string? Error { get; set; }
+
+        public async Task<IActionResult> OnPostAsync()
+        {
+            var expected = config["Admin:Password"];
+            if (string.IsNullOrEmpty(expected)) expected = "changeme";
+            if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(Password ?? "")),
+                    SHA256.HashData(Encoding.UTF8.GetBytes(expected))))
+            { Error = "Wrong password"; return Page(); }
+            var id = new ClaimsIdentity([new Claim(ClaimTypes.Name, "admin")], CookieAuthenticationDefaults.AuthenticationScheme);
+            await HttpContext.SignInAsync(new ClaimsPrincipal(id));
+            return RedirectToPage("/Index");
+        }
+
+        public async Task<IActionResult> OnPostLogoutAsync()
+        {
+            await HttpContext.SignOutAsync();
+            return RedirectToPage("/Login");
+        }
+    }
+}
+@model LoginModel
+@{ ViewData["Title"] = "Sign in"; }
+<div class="row justify-content-center"><div class="col-md-4">
+<h3>Sign in</h3>
+@if (Model.Error != null) { <div class="alert alert-danger">@Model.Error</div> }
+<form method="post">
+    <input type="password" asp-for="Password" class="form-control mb-3" placeholder="Admin password" autofocus />
+    <button class="btn btn-primary w-100">Sign in</button>
+</form></div></div>

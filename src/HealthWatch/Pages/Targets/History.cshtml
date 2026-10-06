@@ -1,0 +1,33 @@
+@page "{id:int}"
+@functions {
+    public class HistoryModel(AppDbContext db) : PageModel
+    {
+        public Target? T { get; set; }
+        public List<CheckResult> Results { get; set; } = [];
+        public List<Incident> Incidents { get; set; } = [];
+        public async Task<IActionResult> OnGetAsync(int id)
+        {
+            T = await db.Targets.FindAsync(id);
+            if (T is null) return NotFound();
+            Results = await db.Results.Where(r => r.TargetId == id).OrderByDescending(r => r.At).Take(200).ToListAsync();
+            Incidents = await db.Incidents.Where(i => i.TargetId == id).OrderByDescending(i => i.StartedAt).Take(20).ToListAsync();
+            return Page();
+        }
+    }
+}
+@model HistoryModel
+@{ ViewData["Title"] = Model.T!.Name; }
+<h3>@Model.T.Name</h3>
+<h5>Incidents</h5>
+<table class="table table-sm"><thead><tr><th>Started</th><th>Ended</th><th>Error</th></tr></thead><tbody>
+@foreach (var i in Model.Incidents) { <tr><td>@i.StartedAt.ToLocalTime()</td><td>@(i.EndedAt?.ToLocalTime().ToString() ?? "ONGOING")</td><td>@i.LastError</td></tr> }
+</tbody></table>
+<h5>Last 200 checks</h5>
+<table class="table table-sm"><thead><tr><th>Time</th><th>Result</th><th>Status</th><th>Latency</th><th>Error</th></tr></thead><tbody>
+@foreach (var r in Model.Results)
+{
+    <tr><td>@r.At.ToLocalTime().ToString("MM-dd HH:mm:ss")</td>
+        <td><span class="badge @(r.Success ? "bg-success" : "bg-danger")">@(r.Success ? "OK" : "FAIL")</span></td>
+        <td>@r.StatusCode</td><td>@r.LatencyMs ms</td><td>@r.Error</td></tr>
+}
+</tbody></table>

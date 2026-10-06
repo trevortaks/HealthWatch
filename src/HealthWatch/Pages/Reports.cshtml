@@ -1,0 +1,52 @@
+@page
+@functions {
+    public class ReportsModel(AppDbContext db) : PageModel
+    {
+        [BindProperty(SupportsGet = true)] public int Hours { get; set; } = 168;
+        public List<TargetReport> Targets { get; set; } = [];
+        public List<IncidentRow> Incidents { get; set; } = [];
+
+        async Task LoadAsync()
+        {
+            if (Hours < 1) Hours = 24;
+            (Targets, Incidents) = await ReportService.BuildAsync(db, DateTime.UtcNow.AddHours(-Hours), DateTime.UtcNow);
+        }
+        public Task OnGetAsync() => LoadAsync();
+
+        public async Task<IActionResult> OnGetCsvAsync()
+        {
+            await LoadAsync();
+            return File(System.Text.Encoding.UTF8.GetBytes(ReportService.ToCsv(Targets)), "text/csv", $"healthwatch-report-{DateTime.Now:yyyyMMdd-HHmm}.csv");
+        }
+    }
+}
+@model ReportsModel
+@{ ViewData["Title"] = "Reports"; }
+<div class="d-flex justify-content-between align-items-center">
+    <h3>Reports</h3>
+    <form method="get" class="d-flex gap-2">
+        <select name="Hours" class="form-select" onchange="this.form.submit()">
+            @foreach (var (h, label) in new[] { (24, "Last 24 hours"), (168, "Last 7 days"), (720, "Last 30 days"), (2160, "Last 90 days") })
+            { <option value="@h" selected="@(Model.Hours == h)">@label</option> }
+        </select>
+        <a class="btn btn-outline-secondary text-nowrap" asp-page-handler="Csv" asp-route-hours="@Model.Hours">Download CSV</a>
+        <button type="button" class="btn btn-outline-secondary" onclick="window.print()">Print</button>
+    </form>
+</div>
+<table class="table table-sm mt-3">
+    <thead><tr><th>Name</th><th>Type</th><th>Uptime</th><th>Checks</th><th>Failures</th><th>Avg ms</th><th>P95 ms</th><th>Incidents</th><th>Downtime</th></tr></thead>
+    <tbody>
+    @foreach (var r in Model.Targets)
+    {
+        <tr><td>@r.Name</td><td>@r.Kind</td>
+            <td class="@(r.UptimePercent < 99 ? "text-danger fw-bold" : "")">@r.UptimePercent.ToString("F2")%</td>
+            <td>@r.Checks</td><td>@r.Failures</td><td>@r.AvgLatencyMs.ToString("F0")</td><td>@r.P95LatencyMs</td>
+            <td>@r.Incidents</td><td>@AlertService.FormatDuration(r.Downtime)</td></tr>
+    }
+    </tbody>
+</table>
+<h5>Incidents</h5>
+<table class="table table-sm"><thead><tr><th>Target</th><th>Started</th><th>Ended</th><th>Duration</th><th>Error</th></tr></thead><tbody>
+@foreach (var i in Model.Incidents)
+{ <tr><td>@i.Target</td><td>@i.StartedAt.ToLocalTime()</td><td>@(i.EndedAt?.ToLocalTime().ToString() ?? "ONGOING")</td><td>@AlertService.FormatDuration(i.Duration)</td><td>@i.Error</td></tr> }
+</tbody></table>

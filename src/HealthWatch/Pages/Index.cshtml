@@ -1,0 +1,57 @@
+@page
+@inject AppDbContext Db
+@functions {
+    public class IndexModel(AppDbContext db, CheckRunner runner) : PageModel
+    {
+        public List<Target> Targets { get; set; } = [];
+        public Dictionary<int, double> Uptime { get; set; } = [];
+
+        public async Task OnGetAsync()
+        {
+            Targets = await db.Targets.OrderBy(t => t.Name).ToListAsync();
+            var since = DateTime.UtcNow.AddHours(-24);
+            var g = await db.Results.Where(r => r.At >= since).GroupBy(r => r.TargetId)
+                .Select(x => new { x.Key, Total = x.Count(), Ok = x.Count(r => r.Success) }).ToListAsync();
+            Uptime = g.ToDictionary(x => x.Key, x => 100.0 * x.Ok / x.Total);
+        }
+
+        public async Task<IActionResult> OnPostCheckAsync(int id)
+        {
+            await runner.RunAsync(id, HttpContext.RequestAborted);
+            return RedirectToPage();
+        }
+    }
+}
+@model IndexModel
+@{ ViewData["Title"] = "Dashboard"; }
+@section Head { <meta http-equiv="refresh" content="15" /> }
+<h3>Dashboard</h3>
+<div class="mb-3">
+    <span class="badge bg-success">Up: @Model.Targets.Count(t => t.Enabled && t.LastSuccess == true)</span>
+    <span class="badge bg-danger">Down: @Model.Targets.Count(t => t.Enabled && t.LastSuccess == false)</span>
+    <span class="badge bg-secondary">Pending/disabled: @Model.Targets.Count(t => !t.Enabled || t.LastSuccess == null)</span>
+</div>
+<table class="table table-sm align-middle">
+    <thead><tr><th>Status</th><th>Name</th><th>Type</th><th>Last check</th><th>Latency</th><th>24h uptime</th><th>Message</th><th></th></tr></thead>
+    <tbody>
+    @foreach (var t in Model.Targets)
+    {
+        <tr>
+            <td>
+                @if (!t.Enabled) { <span class="badge bg-secondary">Disabled</span> }
+                else if (t.LastSuccess == null) { <span class="badge bg-secondary">Pending</span> }
+                else if (t.LastSuccess == true) { <span class="badge bg-success">UP</span> }
+                else { <span class="badge bg-danger">DOWN</span> }
+            </td>
+            <td><a asp-page="/Targets/History" asp-route-id="@t.Id">@t.Name</a></td>
+            <td>@(t.Kind == TargetKind.Http ? "App" : "DB: " + t.Provider)</td>
+            <td>@(t.LastCheckAt?.ToLocalTime().ToString("MM-dd HH:mm:ss"))</td>
+            <td>@(t.LastLatencyMs is { } l ? l + " ms" : "")</td>
+            <td>@(Model.Uptime.TryGetValue(t.Id, out var u) ? u.ToString("F2") + "%" : "-")</td>
+            <td class="text-truncate" style="max-width:320px">@t.LastMessage</td>
+            <td><form method="post" asp-page-handler="Check" asp-route-id="@t.Id"><button class="btn btn-sm btn-outline-primary">Check now</button></form></td>
+        </tr>
+    }
+    </tbody>
+</table>
+@if (!Model.Targets.Any()) { <p class="text-muted">No targets yet. <a asp-page="/Targets/Edit">Add one</a>.</p> }

@@ -1,0 +1,47 @@
+@page "{id:int?}"
+@functions {
+    public class ContactEditModel(AppDbContext db) : PageModel
+    {
+        [BindProperty] public Contact C { get; set; } = new();
+        public async Task<IActionResult> OnGetAsync(int? id)
+        {
+            if (id is null) return Page();
+            var c = await db.Contacts.FindAsync(id);
+            if (c is null) return NotFound();
+            C = c; return Page();
+        }
+        public async Task<IActionResult> OnPostAsync(int? id)
+        {
+            if (string.IsNullOrWhiteSpace(C.Name)) ModelState.AddModelError("C.Name", "Name is required");
+            if ((C.UseEmail && string.IsNullOrWhiteSpace(C.Email)) || ((C.UseSms || C.UseWhatsApp) && string.IsNullOrWhiteSpace(C.Phone)))
+                ModelState.AddModelError("", "Provide the email/phone required by the selected channels");
+            if (!ModelState.IsValid) return Page();
+            if (id is null) { C.Id = 0; db.Contacts.Add(C); }
+            else
+            {
+                var e = await db.Contacts.FindAsync(id);
+                if (e is null) return NotFound();
+                e.Name = C.Name; e.Email = C.Email; e.Phone = C.Phone; e.UseEmail = C.UseEmail;
+                e.UseSms = C.UseSms; e.UseWhatsApp = C.UseWhatsApp; e.Enabled = C.Enabled;
+            }
+            await db.SaveChangesAsync();
+            return RedirectToPage("Index");
+        }
+    }
+}
+@model ContactEditModel
+@{ ViewData["Title"] = "Edit contact"; }
+<h3>@(Model.C.Id == 0 ? "Add contact" : "Edit contact")</h3>
+<form method="post" class="row g-3" style="max-width:600px">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <div class="col-12"><label class="form-label">Name</label><input asp-for="C.Name" class="form-control" /></div>
+    <div class="col-md-6"><label class="form-label">Email</label><input asp-for="C.Email" class="form-control" /></div>
+    <div class="col-md-6"><label class="form-label">Phone (international format)</label><input asp-for="C.Phone" class="form-control" placeholder="2637..." /></div>
+    <div class="col-12">
+        <div class="form-check form-check-inline"><input asp-for="C.UseEmail" class="form-check-input" /><label class="form-check-label">Email</label></div>
+        <div class="form-check form-check-inline"><input asp-for="C.UseSms" class="form-check-input" /><label class="form-check-label">SMS</label></div>
+        <div class="form-check form-check-inline"><input asp-for="C.UseWhatsApp" class="form-check-input" /><label class="form-check-label">WhatsApp</label></div>
+        <div class="form-check form-check-inline"><input asp-for="C.Enabled" class="form-check-input" /><label class="form-check-label">Enabled</label></div>
+    </div>
+    <div class="col-12"><button class="btn btn-primary">Save</button> <a class="btn btn-link" asp-page="Index">Cancel</a></div>
+</form>

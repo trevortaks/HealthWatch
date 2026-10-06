@@ -1,0 +1,15 @@
+[Unit]
+Description=HealthWatch monitor
+After=network.target
+
+[Service]
+Type=notify
+WorkingDirectory=/opt/healthwatch
+ExecStart=/opt/healthwatch/HealthWatch
+Restart=always
+RestartSec=5
+Environment=DataDir=/var/lib/healthwatch
+User=healthwatch
+
+[Install]
+WantedBy=multi-user.target

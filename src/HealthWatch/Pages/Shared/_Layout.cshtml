@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - HealthWatch</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    @await RenderSectionAsync("Head", required: false)
+</head>
+<body>
+    <nav class="navbar navbar-expand-sm navbar-dark bg-dark mb-3">
+        <div class="container">
+            <a class="navbar-brand" asp-page="/Index">HealthWatch</a>
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item"><a class="nav-link" asp-page="/Index">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" asp-page="/Targets/Index">Targets</a></li>
+                    <li class="nav-item"><a class="nav-link" asp-page="/Contacts/Index">Contacts</a></li>
+                    <li class="nav-item"><a class="nav-link" asp-page="/Reports">Reports</a></li>
+                    <li class="nav-item"><a class="nav-link" asp-page="/Settings">Settings</a></li>
+                </ul>
+                <form method="post" asp-page="/Login" asp-page-handler="Logout"><button class="btn btn-sm btn-outline-light">Sign out</button></form>
+            }
+        </div>
+    </nav>
+    <div class="container pb-4">@RenderBody()</div>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
