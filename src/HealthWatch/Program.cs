@@ -24,6 +24,7 @@ builder.Services.AddHttpClient("insecure").ConfigureHttpClient(c => c.Timeout = 
 builder.Services.AddSingleton<Secrets>();
 builder.Services.AddSingleton<EmailSender>();
 builder.Services.AddSingleton<GikkoClient>();
+builder.Services.AddSingleton<SmsPopClient>();
 builder.Services.AddSingleton<INotifier, Notifier>();
 builder.Services.AddSingleton<AlertService>();
 builder.Services.AddSingleton<CheckRunner>();
@@ -44,6 +45,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.EnsureCreated();
+    await db.UpgradeSchemaAsync();
     await db.GetSettingsAsync();
 }
 if (string.IsNullOrEmpty(app.Configuration["Admin:Password"]))

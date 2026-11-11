@@ -23,6 +23,25 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         m.Entity<Incident>().HasIndex(i => new { i.TargetId, i.EndedAt });
     }
 
+    /// <summary>EnsureCreated never alters existing tables, so add columns introduced after the first release.</summary>
+    public async Task UpgradeSchemaAsync()
+    {
+        var conn = Database.GetDbConnection();
+        await conn.OpenAsync();
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "SELECT name FROM pragma_table_info('SettingsRows')";
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync()) existing.Add(r.GetString(0));
+        }
+        foreach (var col in new[] { "SmsPopTokenEnc", "SmsPopSenderId" })
+            if (!existing.Contains(col))
+#pragma warning disable EF1002 // column names are constants above
+                await Database.ExecuteSqlRawAsync($"ALTER TABLE SettingsRows ADD COLUMN \"{col}\" TEXT NULL");
+#pragma warning restore EF1002
+    }
+
     public async Task<Settings> GetSettingsAsync(CancellationToken ct = default)
     {
         var s = await SettingsRows.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);

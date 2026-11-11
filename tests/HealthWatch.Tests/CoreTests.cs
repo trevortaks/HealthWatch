@@ -89,4 +89,16 @@ public class CoreTests
         Assert.Equal("26377", doc.RootElement.GetProperty("to").GetString());
         Assert.Equal("a \"b\"\nc", doc.RootElement.GetProperty("message").GetString());
     }
+
+    [Fact]
+    public void SmsPopResponseReportsUnsentNumbers()
+    {
+        Assert.Null(SmsPopClient.CheckResponse(
+            """{"success":true,"data":{"summary":{"invalid":0},"contacts":[{"phone":"263771234567","status":"sent"}]}}"""));
+        var err = SmsPopClient.CheckResponse(
+            """{"success":true,"data":{"summary":{"invalid":1},"contacts":[{"phone":"263771234567","status":"sent"},{"phone":"263712345678","status":"failed"}]}}""");
+        Assert.Contains("263712345678 (failed)", err);
+        Assert.Contains("+1 invalid", err);
+        Assert.NotNull(SmsPopClient.CheckResponse("""{"success":false,"message":"Unauthenticated."}"""));
+    }
 }

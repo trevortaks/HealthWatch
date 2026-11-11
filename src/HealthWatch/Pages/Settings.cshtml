@@ -5,14 +5,17 @@
         [BindProperty] public Settings S { get; set; } = new();
         [BindProperty] public string? SmtpPassword { get; set; }
         [BindProperty] public string? GikkoAuthValue { get; set; }
+        [BindProperty] public string? SmsPopToken { get; set; }
         [TempData] public string? Message { get; set; }
         public bool HasSmtpPassword { get; set; }
         public bool HasGikkoAuth { get; set; }
+        public bool HasSmsPopToken { get; set; }
 
         public async Task OnGetAsync()
         {
             S = await db.GetSettingsAsync();
             HasSmtpPassword = S.SmtpPasswordEnc != null; HasGikkoAuth = S.GikkoAuthValueEnc != null;
+            HasSmsPopToken = S.SmsPopTokenEnc != null;
         }
 
         public async Task<IActionResult> OnPostAsync()
@@ -23,6 +26,8 @@
             e.GikkoSmsUrl = S.GikkoSmsUrl; e.GikkoWhatsAppUrl = S.GikkoWhatsAppUrl; e.GikkoAuthHeader = S.GikkoAuthHeader ?? "Authorization";
             if (!string.IsNullOrEmpty(GikkoAuthValue)) e.GikkoAuthValueEnc = secrets.Protect(GikkoAuthValue);
             e.GikkoSmsBody = S.GikkoSmsBody; e.GikkoWhatsAppBody = S.GikkoWhatsAppBody;
+            e.SmsPopSenderId = S.SmsPopSenderId?.Trim();
+            if (!string.IsNullOrEmpty(SmsPopToken)) e.SmsPopTokenEnc = secrets.Protect(SmsPopToken.Trim());
             e.RetentionDays = Math.Max(1, S.RetentionDays); e.DailyReportHour = S.DailyReportHour;
             await db.SaveChangesAsync();
             Message = "Settings saved.";
@@ -48,6 +53,11 @@
     <div class="col-md-4"><label class="form-label">User</label><input asp-for="S.SmtpUser" class="form-control" autocomplete="off" /></div>
     <div class="col-md-4"><label class="form-label">Password</label><input name="SmtpPassword" type="password" class="form-control" autocomplete="new-password" placeholder="@(Model.HasSmtpPassword ? "(stored - leave blank to keep)" : "")" /></div>
     <div class="col-md-4"><label class="form-label">From address</label><input asp-for="S.SmtpFrom" class="form-control" /></div>
+
+    <h5 class="mt-4">SMSPoP (SMS)</h5>
+    <div class="col-12 text-muted small">When both are set, SMS alerts go through <a href="https://smspop.co.zw/documentation" target="_blank" rel="noopener">SMSPoP</a> instead of Gikko. Econet and NetOne numbers only.</div>
+    <div class="col-md-4"><label class="form-label">Sender ID (approved, 3-11 chars)</label><input asp-for="S.SmsPopSenderId" class="form-control" maxlength="11" /></div>
+    <div class="col-md-8"><label class="form-label">API token</label><input name="SmsPopToken" type="password" class="form-control" autocomplete="new-password" placeholder="@(Model.HasSmsPopToken ? "(stored - leave blank to keep)" : "")" /></div>
 
     <h5 class="mt-4">Gikko (SMS / WhatsApp)</h5>
     <div class="col-12"><label class="form-label">SMS endpoint URL</label><input asp-for="S.GikkoSmsUrl" class="form-control" /></div>

@@ -85,6 +85,10 @@ public class Settings
     public string GikkoSmsBody { get; set; } = "{\"to\":\"{to}\",\"message\":\"{message}\"}";
     public string GikkoWhatsAppBody { get; set; } = "{\"to\":\"{to}\",\"message\":\"{message}\"}";
 
+    // SMSPoP (smspop.co.zw): when a token and sender ID are set, SMS goes through SMSPoP instead of Gikko.
+    public string? SmsPopTokenEnc { get; set; }
+    public string? SmsPopSenderId { get; set; }
+
     public int RetentionDays { get; set; } = 90;
     /// <summary>Local hour (0-23) to email a 24h summary; -1 disables.</summary>
     public int DailyReportHour { get; set; } = -1;
